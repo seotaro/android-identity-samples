@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 The Android Open Source Project
+ * Copyright 2025 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,16 +15,14 @@
  */
 package com.authentication.shrine.model
 
-import androidx.annotation.DrawableRes
-import androidx.annotation.StringRes
-
 /**
- * A data class representing a product.
+ * Represents the request body for logging in with a username and password.
  *
- * @param stringResourceId The resource ID of the product name string.
- * @param imageResourceId The resource ID of the product image drawable.
+ * @property username The username to log in with.
+ * @property password The password to log in with.
  */
-data class Product(
-    @StringRes val stringResourceId: Int,
-    @DrawableRes val imageResourceId: Int,
+
+data class LoginUsernamePasswordRequest(
+    val username: String,
+    val password: String,
 )

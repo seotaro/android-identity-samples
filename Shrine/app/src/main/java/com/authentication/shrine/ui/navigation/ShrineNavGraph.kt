@@ -24,30 +24,19 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.authentication.shrine.CredentialManagerUtils
 import com.authentication.shrine.ui.AuthenticationScreen
-import com.authentication.shrine.ui.CreatePasskeyScreen
-import com.authentication.shrine.ui.HelpScreen
-import com.authentication.shrine.ui.LearnMoreScreen
 import com.authentication.shrine.ui.MainMenuScreen
-import com.authentication.shrine.ui.OtherOptionsSignInScreen
-import com.authentication.shrine.ui.PasskeyManagementScreen
-import com.authentication.shrine.ui.PlaceholderScreen
 import com.authentication.shrine.ui.RegisterPasswordScreen
-import com.authentication.shrine.ui.RegisterScreen
-import com.authentication.shrine.ui.SettingsScreen
-import com.authentication.shrine.ui.ShrineAppScreen
-import com.authentication.shrine.ui.UpdateProfileScreen
 
 /**
  * The navigation graph for the Shrine app.
  *
- * This graph handles navigation between the authentication and contacts screens.
+ * This graph handles navigation between the authentication, registration and home screens.
  *
  * @param modifier The modifier to apply to the NavHost.
  * @param navController The NavHostController for navigation.
  * @param startDestination The route to navigate to when the graph is first created.
  * @param navigateToLogin A lambda that navigates to the login screen.
  * @param navigateToHome A lambda that navigates to the home screen.
- * @param navigateToMainMenu A lambda that navigates to the main menu screen.
  * @param navigateToRegister A lambda that navigates to the register screen.
  */
 @Composable
@@ -56,8 +45,7 @@ fun ShrineNavGraph(
     navController: NavHostController = rememberNavController(),
     startDestination: String = ShrineAppDestinations.AuthRoute.name,
     navigateToLogin: () -> Unit,
-    navigateToHome: (Boolean) -> Unit,
-    navigateToMainMenu: (Boolean) -> Unit,
+    navigateToHome: () -> Unit,
     navigateToRegister: () -> Unit,
     credentialManagerUtils: CredentialManagerUtils,
 ) {
@@ -76,59 +64,11 @@ fun ShrineNavGraph(
             )
         }
 
-        composable(route = ShrineAppDestinations.CreatePasskeyRoute.name) {
-            CreatePasskeyScreen(
-                navigateToMainMenu = navigateToMainMenu,
-                viewModel = hiltViewModel(),
-                onLearnMoreClicked = { navController.navigate(ShrineAppDestinations.LearnMore.name) },
-                onNotNowClicked = { navController.navigate(ShrineAppDestinations.MainMenuRoute.name) },
-                credentialManagerUtils = credentialManagerUtils,
-            )
-        }
-
         composable(route = ShrineAppDestinations.MainMenuRoute.name) {
             MainMenuScreen(
-                onShrineButtonClicked = { navController.navigate(ShrineAppDestinations.ShrineApp.name) },
-                onSettingsButtonClicked = { navController.navigate(ShrineAppDestinations.Settings.name) },
-                onHelpButtonClicked = { navController.navigate(ShrineAppDestinations.Help.name) },
                 navigateToLogin = navigateToLogin,
                 viewModel = hiltViewModel(),
                 credentialManagerUtils = credentialManagerUtils,
-                navigateToUpdateProfile = { navController.navigate(ShrineAppDestinations.UpdateProfileRoute.name) },
-            )
-        }
-
-        composable(route = ShrineAppDestinations.RegisterRoute.name) {
-            RegisterScreen(
-                navigateToHome = navigateToHome,
-                onLearnMoreClicked = {
-                    navController.navigate(ShrineAppDestinations.LearnMore.name)
-                },
-                onOtherWaysToSignUpClicked = {
-                    navController.navigate(ShrineAppDestinations.OtherOptionsSignInRoute.name)
-                },
-                onBackClicked = { navController.popBackStack() },
-                viewModel = hiltViewModel(),
-                credentialManagerUtils = credentialManagerUtils,
-            )
-        }
-
-        composable(route = ShrineAppDestinations.Help.name) {
-            HelpScreen()
-        }
-
-        composable(route = ShrineAppDestinations.LearnMore.name) {
-            LearnMoreScreen(
-                onBackButtonClicked = { navController.popBackStack() },
-            )
-        }
-
-        composable(route = ShrineAppDestinations.OtherOptionsSignInRoute.name) {
-            OtherOptionsSignInScreen(
-                onSignUpWithPasswordClicked = {
-                    navController.navigate(ShrineAppDestinations.RegisterPasswordRoute.name)
-                },
-                onBackClicked = { navController.popBackStack() },
             )
         }
 
@@ -138,51 +78,6 @@ fun ShrineNavGraph(
                 viewModel = hiltViewModel(),
                 onBackClicked = { navController.popBackStack() },
                 credentialManagerUtils = credentialManagerUtils,
-            )
-        }
-
-        composable(route = ShrineAppDestinations.Placeholder.name) {
-            PlaceholderScreen()
-        }
-
-        composable(route = ShrineAppDestinations.Settings.name) {
-            SettingsScreen(
-                viewModel = hiltViewModel(),
-                onCreatePasskeyClicked = {
-                    navController.navigate(ShrineAppDestinations.CreatePasskeyRoute.name)
-                },
-                onChangePasswordClicked = {
-                    navController.navigate(ShrineAppDestinations.Placeholder.name)
-                },
-                onLearnMoreClicked = {
-                    navController.navigate(ShrineAppDestinations.LearnMore.name)
-                },
-                onManagePasskeysClicked = {
-                    navController.navigate(ShrineAppDestinations.PasskeyManagementTab.name)
-                },
-                onBackClicked = { navController.popBackStack() },
-            )
-        }
-
-        composable(route = ShrineAppDestinations.PasskeyManagementTab.name) { backStackEntry ->
-            PasskeyManagementScreen(
-                onLearnMoreClicked = {
-                    navController.navigate(ShrineAppDestinations.LearnMore.name)
-                },
-                onBackClicked = { navController.popBackStack() },
-                viewModel = hiltViewModel(),
-                credentialManagerUtils = credentialManagerUtils,
-            )
-        }
-
-        composable(route = ShrineAppDestinations.ShrineApp.name) {
-            ShrineAppScreen()
-        }
-
-        composable(route = ShrineAppDestinations.UpdateProfileRoute.name) {
-            UpdateProfileScreen(
-                onBackClicked = { navController.popBackStack() },
-                viewModel = hiltViewModel(),
             )
         }
     }

@@ -20,24 +20,6 @@ import com.authentication.shrine.utility.Constants.SESSION_ID_KEY
 import com.google.gson.Gson
 import org.json.JSONObject
 import retrofit2.Response
-import java.text.SimpleDateFormat
-import java.util.Date
-
-/**
- * Extension function to convert a Long timestamp (in milliseconds since epoch)
- * to a human-readable date string in "dd-MMM-yyyy" format.
- *
- * Example: `1678886400000.toReadableDate()` might return "15-Mar-2023".
- *
- * @receiver The Long timestamp in milliseconds.
- * @return The formatted date string (e.g., "15-Mar-2023").
- * @see SimpleDateFormat
- */
-fun Long.toReadableDate(): String {
-    val dateFormat = SimpleDateFormat("dd-MMM-yyyy")
-    val dateString = dateFormat.format(Date(this))
-    return dateString
-}
 
 /**
  * Extension function to extract a session ID from the "set-cookie" header of a Retrofit {@link Response}.

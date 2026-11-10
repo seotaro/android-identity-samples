@@ -15,30 +15,16 @@
  */
 package com.authentication.shrine.ui.navigation
 
-import androidx.annotation.StringRes
 import androidx.navigation.NavHostController
-import com.authentication.shrine.R
 
 /**
  * An enum class representing the different destinations in the Shrine app.
- *
- * @param title The resource ID of the destination title string.
  */
-enum class ShrineAppDestinations(@StringRes val title: Int) {
-    CreatePasskeyRoute(title = R.string.home),
-    MainMenuRoute(title = R.string.main_menu),
-    AuthRoute(title = R.string.auth),
-    RegisterRoute(title = R.string.register),
-    RegisterPasswordRoute(title = R.string.register_password),
-    Help(title = R.string.help),
-    LearnMore(title = R.string.learn_more),
-    Placeholder(title = R.string.todo),
-    Settings(title = R.string.settings),
-    ShrineApp(title = R.string.app_name),
-    NavHostRoute(title = R.string.nav_host_route),
-    PasskeyManagementTab(title = R.string.passkey_management),
-    OtherOptionsSignInRoute(title = R.string.other_ways_to_sign_in),
-    UpdateProfileRoute(title = R.string.update_profile),
+enum class ShrineAppDestinations {
+    MainMenuRoute,
+    AuthRoute,
+    RegisterPasswordRoute,
+    NavHostRoute,
 }
 
 /**
@@ -48,18 +34,13 @@ enum class ShrineAppDestinations(@StringRes val title: Int) {
  * @param navController The [NavHostController] used for navigation.
  */
 class ShrineNavActions(navController: NavHostController) {
-    // Takes user to Home flow.
-    val navigateToHome: (isSignInThroughPasskeys: Boolean) -> Unit = {
-        if (it) {
-            navController.navigate(ShrineAppDestinations.MainMenuRoute.name) {
-                popUpTo(ShrineAppDestinations.NavHostRoute.name)
-                launchSingleTop = true
-            }
-        } else {
-            navController.navigate(ShrineAppDestinations.CreatePasskeyRoute.name) {
-                popUpTo(ShrineAppDestinations.NavHostRoute.name)
-                launchSingleTop = true
-            }
+    /**
+     * Navigates to the home screen after the user signs in.
+     */
+    val navigateToHome: () -> Unit = {
+        navController.navigate(ShrineAppDestinations.MainMenuRoute.name) {
+            popUpTo(ShrineAppDestinations.NavHostRoute.name)
+            launchSingleTop = true
         }
     }
 
@@ -76,28 +57,11 @@ class ShrineNavActions(navController: NavHostController) {
     }
 
     /**
-     * Navigates to the register flow.
+     * Navigates to the password registration screen.
      */
     val navigateToRegister: () -> Unit = {
-        navController.navigate(ShrineAppDestinations.RegisterRoute.name) {
+        navController.navigate(ShrineAppDestinations.RegisterPasswordRoute.name) {
             launchSingleTop = true
-        }
-    }
-
-    /**
-     * Navigates to the Main Menu flow.
-     */
-    val navigateToMainMenu: (isSignedInThroughPasskeys: Boolean) -> Unit = {
-        if (it) {
-            navController.navigate(ShrineAppDestinations.MainMenuRoute.name) {
-                popUpTo(ShrineAppDestinations.NavHostRoute.name)
-                launchSingleTop = true
-            }
-        } else {
-            navController.navigate(ShrineAppDestinations.CreatePasskeyRoute.name) {
-                popUpTo(ShrineAppDestinations.NavHostRoute.name)
-                launchSingleTop = true
-            }
         }
     }
 }

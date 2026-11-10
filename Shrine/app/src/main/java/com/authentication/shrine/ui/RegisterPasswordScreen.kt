@@ -25,20 +25,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Email
-import androidx.compose.material.icons.filled.Password
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -51,13 +41,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.authentication.shrine.CredentialManagerUtils
 import com.authentication.shrine.R
+import com.authentication.shrine.ui.common.EmailPasswordFields
 import com.authentication.shrine.ui.common.ShrineButton
 import com.authentication.shrine.ui.common.ShrineLoader
 import com.authentication.shrine.ui.common.ShrineTextHeader
@@ -73,7 +61,7 @@ import com.authentication.shrine.ui.viewmodel.RegistrationViewModel
  */
 @Composable
 fun RegisterPasswordScreen(
-    navigateToHome: (isSignInThroughPasskeys: Boolean) -> Unit,
+    navigateToHome: () -> Unit,
     viewModel: RegistrationViewModel,
     onBackClicked: () -> Unit,
     modifier: Modifier = Modifier,
@@ -89,7 +77,9 @@ fun RegisterPasswordScreen(
         viewModel.onPasswordRegister(
             username = emailAddress,
             password = registrationPassword,
-            onSuccess = { flag ->
+            onSuccess = {
+                // Create a restore key so that the user is signed in automatically on a new
+                // device (zero-tap sign-in).
                 viewModel.createRestoreKey(
                     createRestoreKeyOnCredMan = { createRestoreCredObject ->
                         credentialManagerUtils.createRestoreKey(
@@ -98,14 +88,7 @@ fun RegisterPasswordScreen(
                         )
                     },
                 )
-                navigateToHome(flag)
-            },
-            createPassword = { username: String, password: String ->
-                credentialManagerUtils.createPassword(
-                    username = username,
-                    password = password,
-                    context = context,
-                )
+                navigateToHome()
             },
         )
     }
@@ -128,7 +111,6 @@ fun RegisterPasswordScreen(
  * Stateless composable function that displays the registration screen.
  *
  * This screen allows users to create a new account by providing their email and password.
- * It also supports signing in with passkeys.
  *
  * @param onRegister Callback for logging in with email and password.
  * @param uiState The UI state of the authentication process.
@@ -239,49 +221,13 @@ private fun RegisterScreenInputSection(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        TextField(
-            modifier = Modifier.padding(top = dimensionResource(R.dimen.dimen_standard)),
-            value = email,
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Filled.Email,
-                    contentDescription = stringResource(R.string.email_icon),
-                )
-            },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-            onValueChange = onEmailChanged,
-            label = { Text(stringResource(R.string.email_address)) },
-            placeholder = { Text(stringResource(R.string.email_address)) },
-        )
-
-        TextField(
-            modifier = Modifier.padding(top = dimensionResource(R.dimen.dimen_standard)),
-            value = password,
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Filled.Password,
-                    contentDescription = stringResource(R.string.password_icon),
-                )
-            },
-            singleLine = true,
-            visualTransformation = if (passwordVisible) {
-                VisualTransformation.None
-            } else {
-                PasswordVisualTransformation()
-            },
-            onValueChange = onPasswordChange,
-            label = { Text(stringResource(R.string.password)) },
-            trailingIcon = {
-                val image = if (passwordVisible) {
-                    Icons.Filled.Visibility
-                } else {
-                    Icons.Filled.VisibilityOff
-                }
-                IconButton(onClick = onPasswordVisibilityToggle) {
-                    Icon(imageVector = image, stringResource(R.string.password))
-                }
-            },
+        EmailPasswordFields(
+            email = email,
+            onEmailChanged = onEmailChanged,
+            password = password,
+            onPasswordChange = onPasswordChange,
+            passwordVisible = passwordVisible,
+            onPasswordVisibilityToggle = onPasswordVisibilityToggle,
         )
 
         Spacer(modifier = Modifier.height(dimensionResource(R.dimen.padding_extra_large)))

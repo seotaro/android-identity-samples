@@ -22,17 +22,18 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import com.authentication.shrine.CredentialManagerUtils
 import com.authentication.shrine.R
 import com.authentication.shrine.ui.common.LogoHeading
@@ -43,23 +44,18 @@ import com.authentication.shrine.ui.viewmodel.HomeViewModel
 /**
  * Stateful composable function that displays the main menu screen.
  *
- * @param onShrineButtonClicked Callback for when the Shrine button is clicked.
- * @param onSettingsButtonClicked Callback for when the settings button is clicked.
- * @param onHelpButtonClicked Callback for when the help button is clicked.
  * @param navigateToLogin Callback for navigating to the login screen.
  * @param viewModel The HomeViewModel that provides the UI state.
+ * @param credentialManagerUtils The instance of [CredentialManagerUtils]
  */
 @Composable
 fun MainMenuScreen(
-    onShrineButtonClicked: () -> Unit,
-    onSettingsButtonClicked: () -> Unit,
-    onHelpButtonClicked: () -> Unit,
     navigateToLogin: () -> Unit,
-    navigateToUpdateProfile: () -> Unit,
     viewModel: HomeViewModel,
     modifier: Modifier = Modifier,
     credentialManagerUtils: CredentialManagerUtils,
 ) {
+    val uiState = viewModel.uiState.collectAsState().value
     val onSignOut = {
         viewModel.signOut(
             deleteRestoreKey = credentialManagerUtils::deleteRestoreKey,
@@ -67,43 +63,31 @@ fun MainMenuScreen(
     }
 
     MainMenuScreen(
-        onShrineButtonClicked = onShrineButtonClicked,
-        onSettingsButtonClicked = onSettingsButtonClicked,
-        onHelpButtonClicked = onHelpButtonClicked,
-        navigateToLogin = navigateToLogin,
-        onSignOut = onSignOut,
-        navigateToUpdateProfile = navigateToUpdateProfile,
+        username = uiState.username,
+        onSignOut = {
+            onSignOut()
+            navigateToLogin()
+        },
         modifier = modifier,
     )
 }
 
 /**
- * Stateless composable function for the main menu screen.
+ * Stateless composable function for the main menu screen. It shows the signed-in user and a
+ * button to sign out.
  *
- * This screen provides options for accessing the Shrine app, settings, help, and signing out.
- *
- * @param modifier Modifier to be applied to the composable.
- * @param onShrineButtonClicked Callback to navigate to the Shrine app.
- * @param onSettingsButtonClicked Callback to navigate to the settings screen.
- * @param onHelpButtonClicked Callback to navigate to the help screen.
- * @param navigateToLogin Callback to navigate to the login screen.
+ * @param username The username of the signed-in user.
  * @param onSignOut Callback to sign out the user.
+ * @param modifier Modifier to be applied to the composable.
  */
 @Composable
 fun MainMenuScreen(
-    onShrineButtonClicked: () -> Unit,
-    onSettingsButtonClicked: () -> Unit,
-    onHelpButtonClicked: () -> Unit,
-    navigateToLogin: () -> Unit,
-    navigateToUpdateProfile: () -> Unit,
+    username: String,
     onSignOut: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val snackbarHostState = remember { SnackbarHostState() }
-
     Scaffold(
         modifier = modifier,
-        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
     ) { contentPadding ->
         Column(
             modifier = Modifier
@@ -118,87 +102,33 @@ fun MainMenuScreen(
 
             Spacer(modifier = Modifier.height(dimensionResource(R.dimen.size_large)))
 
-            MainMenuButtonsList(
-                onShrineButtonClicked,
-                onSettingsButtonClicked,
-                onHelpButtonClicked,
-                onSignOut,
-                navigateToLogin,
-                navigateToUpdateProfile,
+            Text(
+                text = stringResource(R.string.signed_in_as, username),
+                style = MaterialTheme.typography.titleMedium,
+            )
+
+            Spacer(modifier = Modifier.height(dimensionResource(R.dimen.padding_extra_large)))
+
+            ShrineButton(
+                onClick = onSignOut,
+                buttonText = stringResource(R.string.sign_out),
+                usePrimaryColor = false,
+                modifier = Modifier.widthIn(min = 280.dp),
             )
         }
     }
 }
 
 /**
- * Composable function that displays a list of buttons for the main menu.
- *
- * @param onShrineButtonClicked Callback invoked when the "Shop" button is clicked.
- * @param onSettingsButtonClicked Callback invoked when the "Settings" button is clicked.
- * @param onHelpButtonClicked Callback invoked when the "Help" button is clicked.
- * @param onSignOut Callback invoked when the "Sign Out" button is clicked.
- * @param navigateToLogin Callback invoked to navigate to the login screen after signing out.
- */
-@Composable
-private fun MainMenuButtonsList(
-    onShrineButtonClicked: () -> Unit,
-    onSettingsButtonClicked: () -> Unit,
-    onHelpButtonClicked: () -> Unit,
-    onSignOut: () -> Unit,
-    navigateToLogin: () -> Unit,
-    navigateToUpdateProfile: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier.padding(dimensionResource(R.dimen.padding_medium)),
-        verticalArrangement = Arrangement.spacedBy(dimensionResource(id = R.dimen.padding_large)),
-    ) {
-        ShrineButton(
-            onClick = onShrineButtonClicked,
-            buttonText = stringResource(R.string.shop),
-        )
-
-        ShrineButton(
-            onClick = onSettingsButtonClicked,
-            buttonText = stringResource(R.string.settings),
-            usePrimaryColor = false,
-        )
-
-        ShrineButton(
-            onClick = onHelpButtonClicked,
-            buttonText = stringResource(R.string.help),
-        )
-
-        ShrineButton(
-            onClick = {
-                onSignOut()
-                navigateToLogin()
-            },
-            buttonText = stringResource(R.string.sign_out),
-            usePrimaryColor = false,
-        )
-
-        ShrineButton(
-            onClick = navigateToUpdateProfile,
-            buttonText = stringResource(R.string.update_profile),
-        )
-    }
-}
-
-/**
- * Generates a preview of the PasskeysSignedPreview composable function.
+ * Generates a preview of the main menu screen.
  */
 @Preview(showBackground = true)
 @Composable
-fun PasskeysSignedPreview() {
+fun MainMenuScreenPreview() {
     ShrineTheme {
         MainMenuScreen(
-            onShrineButtonClicked = { },
-            onSettingsButtonClicked = { },
-            onHelpButtonClicked = { },
-            navigateToLogin = { },
+            username = "user@example.com",
             onSignOut = { },
-            navigateToUpdateProfile = { },
         )
     }
 }

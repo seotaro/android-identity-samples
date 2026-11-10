@@ -1,120 +1,105 @@
 # Shrine Sample App
 
-This is the repository for the Credential Manager API code integration app,
-also known as the **"Shrine"** app for both Android and Wear OS.
+This is a reduced version of the Credential Manager API sample app, also known as the
+**"Shrine"** app, that focuses on **Restore Credentials** (zero-tap sign-in): the user is signed
+in automatically, without any interaction, after the app is restored on a new device.
 
-The Shrine app is a fully functional Android app built with Kotlin and Jetpack Compose.
-This sample app is built to share a working sample of Credential Manager APIs in Android
-and help visualize the workflow. This sample code is designed to help you understand the
-workflow better and allow you to estimate the level of effort needed to incorporate
-Credential Manager with your own apps.
+Passkeys, Sign in with Google, passkey management and the other demo screens of the original
+sample have been removed from the Android app. The Wear OS module is unchanged.
 
 ## Features
 
 This sample app implements the following use cases:
 
-* Create an account using username and set the session using password.
-* Generate a new passkey for an existing account.
-* Create a passkey-only account using username.
-* Store the credentials for created accounts in the user's Google Password Manager account.
-* Sign in flow with passkeys and password support.
-* Sign in flow with Sign in with Google.
-* Sign in flow with restore credentials support.
-* Passkey management in settings.
-* Internal session management.
+* Create an account, or sign in, with an email address and a password. Passwords are not saved to
+  the password manager, since zero-tap sign-in doesn't use them.
+* Create a restore key after every successful sign-up or sign-in.
+* Sign in automatically with the restore key on the first launch after the app is restored on a
+  new device (zero-tap sign-in).
+* Sign out, which deletes the restore key from the device and the server.
 
 ## Requirements
 
 * Latest release of [Android Studio](https://developer.android.com/studio)
 * Java 11 or higher
+* A device running Android 9 (API level 28) or higher with Google Play services, signed in to a
+  Google Account and with a screen lock. Restore keys can't be created without a screen lock.
 
-## Typical account creation and login flow
+## Typical flow
 
-* Launch the app.
-* Create an account with a passkey or password, or directly log in with your Google account
-* When creating a passkey, you will need to use your lock screen credentials. This means you will
-  need to enable a lock screen if you don't have one.
-* Once an account is created, you can sign in with the method you chose.
-* For passkey login, select the passkey from the list of passkeys options shown in the bottom sheet.
-  For password login, select the respective password option shown in the bottom sheet.
-* Manage your passkeys by going into settings.
-* Log out of the application to restart the flow.
-* [Optional] Create multiple accounts and switch accounts to test the implementation.
+1. Launch the app.
+2. Tap **Sign Up** and create an account with an email address and a password, or sign in with an
+   existing account. A restore key is created in the background.
+3. Back up the app and restore it on a new device (or on the same device after reinstalling it).
+4. Launch the restored app. The user is signed in automatically and the home screen is shown.
+5. Tap **Sign Out** to delete the restore key and restart the flow.
+
+## Testing zero-tap sign-in
+
+Use Android Studio's **Backup App Data** / **Restore App Data** (Running Devices window, ⋮ menu).
+For a physical device, start mirroring it in the Running Devices window first.
+
+1. Sign in to the app. Don't sign out, since signing out deletes the restore key.
+2. Run **Backup App Data** with the **Device to Device** backup type.
+3. Reinstall the app without launching it:
+   `adb uninstall com.authentication.shrine` and then `./gradlew :app:installDebug`.
+4. Run **Restore App Data** and select the backup.
+5. Launch the app. Logcat shows `webauthn/signinRequest` and `webauthn/signinResponse`, and the
+   home screen is shown.
+
+`adb shell bmgr backupnow` / `bmgr restore` alone don't bring back the restore key.
+
+The `auth` DataStore that holds the session ID is excluded from backups
+(`res/xml/data_extraction_rules.xml` and `res/xml/backup_rules.xml`). Otherwise the restored
+session ID would sign the user in, and the restore key would not be used.
 
 ## Design
 
-This section will cover the general components of the Shrine app. The typical app flow would look
-like the following:
+The app has three screens:
 
-1. User interacts with a screen, i.e. to create a credential via the "Sign up" button on
-   `RegisterScreen.kt`.
-2. A callback is triggered, usually tied to a View Model function, i.e.
-   `viewModel.onPasskeyRegister()`.
-3. The View Model function calls the appropriate `AuthRepository.kt` function to send a request to
-   the server, i.e. `repository.registerUsername()` to first register the username with the server.
-4. `AuthRepository.kt` contains an injected `AuthApiService` instance which implements Retrofit
-   calls to the Project Sesame (app) server. Server requests and responses are handled in
-   `AuthRepository.kt` and then passed to the calling View Model. Internal session states are also
-   updated as needed.
-5. The View Model handles the returned response and makes other server calls as needed, i.e.
-   `createPasskey()`. In this case, `createPasskey()` also contains a callback with
-   `credentialManager.createCredential()` once initial server communication succeeds, via a
-   `CredentialManagerUtils` object that was passed from the Screen.
-6. The View Model updates the UI with success or failure, and navigates the user to the next screen
-   as appropriate.
+| Screen | View Model | Description |
+|---|---|---|
+| `AuthenticationScreen` | `AuthenticationViewModel` | Checks for a restore key on first display, and signs in with a password. |
+| `RegisterPasswordScreen` | `RegistrationViewModel` | Creates an account with a password. |
+| `MainMenuScreen` | `HomeViewModel` | Shows the signed-in user and signs out. |
+
+`SplashViewModel` checks whether the stored session is still valid and starts at the home screen or
+the authentication screen.
 
 ### Server
 
-This app utilizes the server at https://project-sesame-426206.appspot.com/ which is specified in the
-`app/build.gradle.kts` file. This server handles all requests related to passwords and passkeys (
-creation, authentication, deletion), as well as Sign in with Google. You can see the implementation
-of this server at https://github.com/GoogleChromeLabs/project-sesame. The app uses Retrofit to
-handle web communications with the server, with endpoints specified in`api/AuthApiService.kt` and
-called in `repository/AuthRepository.kt`.
+This app utilizes the server specified in the `app/build.gradle.kts` file (`API_BASE_URL`). The
+server is [Project Sesame](https://github.com/GoogleChromeLabs/project-sesame). Its
+`/.well-known/assetlinks.json` must list the app's package name and the SHA-256 fingerprint of
+`debug.keystore`, which is used to sign both debug and release builds.
 
-### Screens
+The app uses Retrofit to handle web communications with the server, with endpoints specified in
+`api/AuthApiService.kt` and called in `repository/AuthRepository.kt`:
 
-The frontend elements are contained in the various Screens in the `ui` package. Each Screen utilizes
-a View Model that generally has the same name, with a few exceptions. These Screens primarily handle
-frontend element placements and error message displays.
+* `auth/username-password`: sign-up and sign-in with a password.
+* `webauthn/registerRequest` and `webauthn/registerResponse?type=rc`: registration of a restore key.
+* `webauthn/signinRequest` and `webauthn/signinResponse`: sign-in with a restore key.
+* `webauthn/removeKey`: deletion of the restore key on sign-out.
+* `webauthn/getKeys`: check whether the session is still valid.
 
-Some Screens utilize Credential Manager calls (i.e. `RegisterScreen.kt`). As a Credential Manager
-object requires an Activity, the corresponding Context is passed in through the Screen to the
-`CredentialManagerUtils.kt` file which creates and manages the actual Credential Manager object.
-
-### View Models
-
-The View Models generally manage sending, receiving, and processing responses between the Screens
-and app server. Server communication is handled via an injected `AuthRepository` object. Uistate is
-also updated in the View Model, which is in turn monitored and updated in the Screen.
+The server stores and verifies a restore key in the same way as a passkey.
 
 ### Credential Manager
 
-Credential manager calls are made in `CredentialManagerUtils.kt`. The usage is fairly
-straightforward, i.e. `.createCredential()` and `.getCredential()` for creating and retrieving
-credentials, respectively. Please note the handling of exceptions, as some may be caused by fairly
-common usage, i.e. user cancelling the selector.
+Credential Manager calls are made in `CredentialManagerUtils.kt`. As a Credential Manager call
+requires an Activity, the corresponding Context is passed in through the Screen.
 
-### Requests and responses
+* `createRestoreKey()`: creates a restore key. If the device doesn't meet the cloud backup
+  requirements (`E2eeUnavailableException`), the restore key is created again without cloud backup,
+  so that it can still be transferred device to device.
+* `getRestoreKey()`: retrieves the restore key for zero-tap sign-in.
+* `deleteRestoreKey()`: deletes the restore key on sign-out.
 
-The requests and responses sent and received from the server are defined in the `model` package.
-These consist of various data classes that are defined based on the expected response from the
-Project Sesame server, i.e. the data class `RegisterRequestResponse` defines fields expected from
-server response from requesting passkey registration options. This is then used in `registerRequest`
-in `AuthApiService.kt`, and the server's returned JSON is expected to have those fields. You can
-verify this by looking at the logs in Logcat after making any server request.
-
-### Restore Credentials
-
-Restore Credentials are passkeys that are used to restore a user's app accounts when setting up a
-new device. In Shrine, this is created in `AuthenticationScreen.kt` upon signing in successfully and
-passing the `createRestoreKey()` function in to the View Model. This is also done in
-`RegisterPasswordScreen.kt`. When launching the app for the first time, Shrine checks for an
-existing restore key by calling `viewModel.checkForStoredRestoreKey()` in `AuthenticationScreen.kt`.
-If one exists, it uses that to log the user in automatically. You can read more about how Restore
-Credentials work at https://developer.android.com/identity/sign-in/restore-credentials.
+`AuthRepository.createRestoreKey()` combines these with the server calls. You can read more about
+how Restore Credentials work at https://developer.android.com/identity/sign-in/restore-credentials.
 
 ## Wear OS Module
+
 This sample also includes a Wear OS module that implements Credential Manager for a Wear OS app.
 See the wear/README.md file to learn about Wear OS behaviors and limitations.
 
@@ -122,5 +107,3 @@ See the wear/README.md file to learn about Wear OS behaviors and limitations.
 
 Shrine is distributed under the terms of the Apache License (Version 2.0). See the license for more
 information.
-
-**
