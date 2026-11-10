@@ -16,37 +16,26 @@
 package com.authentication.shrine.repository
 
 import android.util.Log
-import androidx.credentials.CreateCredentialResponse
-import androidx.credentials.CreatePublicKeyCredentialResponse
 import androidx.credentials.CreateRestoreCredentialResponse
-import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialResponse
-import androidx.credentials.PasswordCredential
-import androidx.credentials.PublicKeyCredential
 import androidx.credentials.RestoreCredential
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.authentication.shrine.GenericCredentialManagerResponse
 import com.authentication.shrine.api.AuthApiService
 import com.authentication.shrine.model.AuthError
 import com.authentication.shrine.model.AuthResult
 import com.authentication.shrine.model.CredmanResponse
-import com.authentication.shrine.model.FederationOptionsRequest
 import com.authentication.shrine.model.LoginUsernamePasswordRequest
-import com.authentication.shrine.model.PasskeysList
 import com.authentication.shrine.model.RegisterRequestRequestBody
 import com.authentication.shrine.model.RegisterResponseRequestBody
-import com.authentication.shrine.model.RegisterUsernameRequest
 import com.authentication.shrine.model.ResponseObject
 import com.authentication.shrine.model.SignInResponseRequest
-import com.authentication.shrine.model.SignInWithGoogleRequest
 import com.authentication.shrine.utility.createCookieHeader
 import com.authentication.shrine.utility.getJsonObject
 import com.authentication.shrine.utility.getSessionId
-import com.google.android.gms.fido.fido2.api.common.PublicKeyCredentialType
-import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import okhttp3.ResponseBody
@@ -55,11 +44,9 @@ import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 
-const val SERVER_CLIENT_ID =
-    "493201854729-bposa1duevdn4nspp28cmn6anucu60pf.apps.googleusercontent.com"
-
 /**
- * Repository class that handles authentication-related operations.
+ * Repository class that handles authentication-related operations: password sign-in and the
+ * restore key (Restore Credentials) used for zero-tap sign-in.
  *
  * @param authApiService The API service for interacting with the server.
  * @param dataStore The data store for storing user data.
@@ -74,19 +61,17 @@ class AuthRepository @Inject constructor(
     companion object {
         const val TAG = "AuthRepository"
 
-        // Keys for SharedPreferences
+        // Keys for the DataStore
         val USERNAME = stringPreferencesKey("username")
         val DISPLAYNAME = stringPreferencesKey("displayname")
-        val IS_SIGNED_IN_THROUGH_PASSKEYS = booleanPreferencesKey("is_signed_passkeys")
         val SESSION_ID = stringPreferencesKey("session_id")
-        val RP_ID_KEY = stringPreferencesKey("rp_id_key")
-        val USER_ID_KEY = stringPreferencesKey("user_id_key")
-        val CRED_ID = stringPreferencesKey("cred_id")
         val RESTORE_KEY_CREDENTIAL_ID = stringPreferencesKey("restore_key_credential_id")
 
         // Value for restore credential AuthApiService parameter
         const val RESTORE_KEY_TYPE_PARAMETER = "rc"
-        const val RESTORE_CREDENTIAL_AAGUID = "restore-credential"
+
+        // WebAuthn credential type, used for restore keys as well.
+        private const val PUBLIC_KEY_CREDENTIAL_TYPE = "public-key"
 
         suspend fun <T> DataStore<Preferences>.read(key: Preferences.Key<T>): T? {
             return data.map { it[key] }.first()
@@ -94,47 +79,12 @@ class AuthRepository @Inject constructor(
     }
 
     /**
-     * Registers the username with the server.
-     *
-     * @param username The username to send.
-     * @param displayName The display name to send.
-     * @return True if the login was successful, false otherwise.
-     */
-    suspend fun registerUsername(username: String, displayName: String): AuthResult<Unit> {
-        return try {
-            val response =
-                authApiService.registerUsername(RegisterUsernameRequest(username, displayName))
-            if (response.isSuccessful) {
-                dataStore.edit { prefs ->
-                    // Use local values since server doesn't return response with these fields.
-                    prefs[USERNAME] = username
-                    prefs[DISPLAYNAME] = displayName
-                    response.getSessionId()?.also {
-                        prefs[SESSION_ID] = it
-                    }
-                }
-                AuthResult.Success(Unit)
-            } else {
-                if (response.code() == 401) {
-                    signOut()
-                }
-                AuthResult.Failure(
-                    AuthError.ServerError(
-                        response.errorBody()?.let { parseResponseError(it) } ?: response.message()))
-            }
-        } catch (e: IOException) {
-            AuthResult.Failure(AuthError.NetworkError)
-        } catch (e: Exception) {
-            AuthResult.Failure(AuthError.Unknown(e.message))
-        }
-    }
-
-    /**
-     * Sends the username to the server.
+     * Signs in with a username and password. The server creates the account if it doesn't exist,
+     * so this is used for both sign-up and sign-in.
      *
      * @param username The username to send.
      * @param password The password to send.
-     * @return True if the login was successful, false otherwise.
+     * @return [AuthResult.Success] if the login was successful.
      */
     suspend fun login(username: String, password: String): AuthResult<Unit> {
         return try {
@@ -154,7 +104,9 @@ class AuthRepository @Inject constructor(
                 }
                 AuthResult.Failure(
                     AuthError.ServerError(
-                        response.errorBody()?.let { parseResponseError(it) } ?: response.message()))
+                        response.errorBody()?.let { parseResponseError(it) } ?: response.message(),
+                    ),
+                )
             }
         } catch (e: IOException) {
             AuthResult.Failure(AuthError.NetworkError)
@@ -171,17 +123,16 @@ class AuthRepository @Inject constructor(
             prefs.remove(USERNAME)
             prefs.remove(DISPLAYNAME)
             prefs.remove(SESSION_ID)
-            prefs.remove(IS_SIGNED_IN_THROUGH_PASSKEYS)
             prefs.remove(RESTORE_KEY_CREDENTIAL_ID)
         }
     }
 
     /**
-     * Starts to register a passkey creation request to the server.
+     * Starts to register a restore key with the server.
      *
-     * @return The public key credential request options, or null if there was an error.
+     * @return The public key credential creation options for the restore key.
      */
-    suspend fun registerPasskeyCreationRequest(): AuthResult<JSONObject> {
+    suspend fun registerRestoreKeyRequest(): AuthResult<JSONObject> {
         return try {
             val sessionId = dataStore.read(SESSION_ID)
             if (!sessionId.isNullOrEmpty()) {
@@ -191,13 +142,11 @@ class AuthRepository @Inject constructor(
                 )
                 if (response.isSuccessful) {
                     dataStore.edit { prefs ->
-                        prefs[RP_ID_KEY] = response.body()?.rp?.id ?: ""
                         response.getSessionId()?.also {
                             prefs[SESSION_ID] = it
                         }
                     }
-                    val responseObject = response.getJsonObject()
-                    AuthResult.Success(responseObject)
+                    AuthResult.Success(response.getJsonObject())
                 } else {
                     if (response.code() == 401) {
                         signOut()
@@ -205,7 +154,9 @@ class AuthRepository @Inject constructor(
                     AuthResult.Failure(
                         AuthError.ServerError(
                             response.errorBody()?.let { parseResponseError(it) }
-                                ?: response.message()))
+                                ?: response.message(),
+                        ),
+                    )
                 }
             } else {
                 AuthResult.Failure(AuthError.Unknown(null))
@@ -218,44 +169,27 @@ class AuthRepository @Inject constructor(
     }
 
     /**
-     * Finishes registering a new credential to the server. This should only be called after
-     * a call to [registerPasskeyCreationRequest] and a local API for public key generation.
+     * Finishes registering a restore key with the server. This should only be called after
+     * a call to [registerRestoreKeyRequest] and the creation of the restore key on the device.
      *
-     * @param credentialResponse The credential response.
-     * @return True if the registration was successful, false otherwise.
+     * @param credentialResponse The response from Credential Manager's restore key creation.
+     * @return [AuthResult.Success] if the registration was successful.
      */
-    suspend fun registerPasskeyCreationResponse(
-        credentialResponse: CreateCredentialResponse,
+    suspend fun registerRestoreKeyResponse(
+        credentialResponse: CreateRestoreCredentialResponse,
     ): AuthResult<Unit> {
         return try {
-            // Field to pass as query parameter to authApiService.
-            val typeParam: String?
-            val registrationResponseJson = when (credentialResponse) {
-                is CreatePublicKeyCredentialResponse -> {
-                    typeParam = null
-                    JSONObject(credentialResponse.registrationResponseJson)
-                }
-
-                is CreateRestoreCredentialResponse -> {
-                    typeParam = RESTORE_KEY_TYPE_PARAMETER
-                    JSONObject(credentialResponse.responseJson)
-                }
-
-                else -> {
-                    return AuthResult.Failure(AuthError.Unknown("Unknown credential type"))
-                }
-            }
-
+            val registrationResponseJson = JSONObject(credentialResponse.responseJson)
             val rawId = registrationResponseJson.getString("rawId")
             val response = registrationResponseJson.getJSONObject("response")
             val sessionId = dataStore.read(SESSION_ID)
             if (!sessionId.isNullOrBlank()) {
                 val apiResult = authApiService.registerResponse(
                     cookie = sessionId.createCookieHeader(),
-                    type = typeParam,
+                    type = RESTORE_KEY_TYPE_PARAMETER,
                     requestBody = RegisterResponseRequestBody(
                         id = rawId,
-                        type = PublicKeyCredentialType.PUBLIC_KEY.toString(),
+                        type = PUBLIC_KEY_CREDENTIAL_TYPE,
                         rawId = rawId,
                         response = CredmanResponse(
                             clientDataJSON = response.getString("clientDataJSON"),
@@ -265,10 +199,7 @@ class AuthRepository @Inject constructor(
                 )
                 if (apiResult.isSuccessful) {
                     dataStore.edit { prefs ->
-                        prefs[CRED_ID] = rawId
-                        if (credentialResponse is CreateRestoreCredentialResponse) {
-                            prefs[RESTORE_KEY_CREDENTIAL_ID] = rawId
-                        }
+                        prefs[RESTORE_KEY_CREDENTIAL_ID] = rawId
                         apiResult.getSessionId()?.also {
                             prefs[SESSION_ID] = it
                         }
@@ -291,142 +222,55 @@ class AuthRepository @Inject constructor(
     }
 
     /**
-     * Starts to sign in with a credential.
+     * Creates a restore key on the device and registers it with the server, so that the user is
+     * signed in automatically after restoring the app on a new device (zero-tap sign-in).
      *
-     * @return The public key credential request options, or null if there was an error.
+     * @param createRestoreKeyOnCredMan Creates the restore key with Credential Manager from the
+     * creation options returned by the server.
+     * @return True if the restore key was created and registered, false otherwise.
      */
-    suspend fun signInWithPasskeyOrPasswordRequest(): AuthResult<JSONObject> {
+    suspend fun createRestoreKey(
+        createRestoreKeyOnCredMan: suspend (JSONObject) -> GenericCredentialManagerResponse,
+    ): Boolean {
+        val request = registerRestoreKeyRequest()
+        if (request !is AuthResult.Success) {
+            Log.e(TAG, "Error requesting restore key creation options.")
+            return false
+        }
+        val created = createRestoreKeyOnCredMan(request.data)
+        val response = (created as? GenericCredentialManagerResponse.CreateCredentialSuccess)
+            ?.createCredentialResponse as? CreateRestoreCredentialResponse
+        if (response == null) {
+            Log.e(TAG, "Error creating restore key: $created")
+            return false
+        }
+        return registerRestoreKeyResponse(response) is AuthResult.Success
+    }
+
+    /**
+     * Starts to sign in with a restore key by requesting a challenge from the server.
+     *
+     * @return The public key credential request options.
+     */
+    suspend fun signInRequest(): AuthResult<JSONObject> {
         return try {
             val response = authApiService.signInRequest()
             if (response.isSuccessful) {
                 dataStore.edit { prefs ->
-                    prefs[RP_ID_KEY] = response.body()?.rpId ?: ""
                     response.getSessionId()?.also {
                         prefs[SESSION_ID] = it
                     }
                 }
-                val responseObject = response.getJsonObject()
-                AuthResult.Success(responseObject)
+                AuthResult.Success(response.getJsonObject())
             } else {
                 if (response.code() == 401) {
                     signOut()
                 }
                 AuthResult.Failure(
                     AuthError.ServerError(
-                        response.errorBody()?.let { parseResponseError(it) } ?: response.message()))
-            }
-        } catch (e: IOException) {
-            AuthResult.Failure(AuthError.NetworkError)
-        } catch (e: Exception) {
-            AuthResult.Failure(AuthError.Unknown(e.message))
-        }
-    }
-
-    /**
-     * Finishes to signing in with a credential. This should only be called after a call to
-     * [signInWithPasskeyRequest] and a local API for key assertion.
-     *
-     * @param credentialResponse The credential response.
-     * @return True if the sign-in was successful, false otherwise.
-     */
-    suspend fun signInWithPasskeyOrPasswordResponse(credentialResponse: GetCredentialResponse): AuthResult<Unit> {
-        return try {
-            val credential = credentialResponse.credential
-            if (credential is PublicKeyCredential || credential is RestoreCredential) {
-                val signInResponse =
-                    credential.data.getString(
-                        if (credential.type == RestoreCredential.TYPE_RESTORE_CREDENTIAL) {
-                            "androidx.credentials.BUNDLE_KEY_GET_RESTORE_CREDENTIAL_RESPONSE"
-                        } else {
-                            "androidx.credentials.BUNDLE_KEY_AUTHENTICATION_RESPONSE_JSON"
-                        },
-                    )
-                if (signInResponse != null) {
-                    val signInResponseJSON = JSONObject(signInResponse)
-                    val response = signInResponseJSON.getJSONObject("response")
-                    val sessionId = dataStore.read(SESSION_ID)
-                    val credentialId = signInResponseJSON.getString("rawId")
-
-                    if (!sessionId.isNullOrBlank()) {
-                        val apiResult = authApiService.signInResponse(
-                            cookie = sessionId.createCookieHeader(),
-                            requestBody = SignInResponseRequest(
-                                id = credentialId,
-                                type = PublicKeyCredentialType.PUBLIC_KEY.toString(),
-                                rawId = credentialId,
-                                response = ResponseObject(
-                                    clientDataJSON = response.getString("clientDataJSON"),
-                                    authenticatorData = response.getString("authenticatorData"),
-                                    signature = response.getString("signature"),
-                                    userHandle = response.getString("userHandle"),
-                                ),
-                            ),
-                        )
-                        return if (apiResult.isSuccessful) {
-                            dataStore.edit { prefs ->
-                                prefs[CRED_ID] = credentialId
-                                apiResult.getSessionId()?.also {
-                                    prefs[SESSION_ID] = it
-                                }
-                                prefs[USERNAME] = apiResult.body()?.username.orEmpty()
-                                prefs[DISPLAYNAME] = apiResult.body()?.displayName.orEmpty()
-                            }
-                            AuthResult.Success(Unit)
-                        } else {
-                            if (apiResult.code() == 401) {
-                                signOut()
-                            }
-                            AuthResult.Failure(
-                                AuthError.ServerError(
-                                    parseResponseError(apiResult.errorBody()!!)
-                                )
-                            )
-                        }
-                    }
-                }
-            } else if (credential is PasswordCredential) {
-                val email =
-                    credential.data.getString("androidx.credentials.BUNDLE_KEY_ID")
-                val password =
-                    credential.data.getString("androidx.credentials.BUNDLE_KEY_PASSWORD")
-                if (email != null && password != null) {
-                    return login(email, password)
-                }
-            }
-            AuthResult.Failure(AuthError.Unknown(null))
-        } catch (e: IOException) {
-            AuthResult.Failure(AuthError.NetworkError)
-        } catch (e: Exception) {
-            AuthResult.Failure(AuthError.Unknown(e.message))
-        }
-    }
-
-
-    /**
-     * Sends the session ID to the server to sign in the user.
-     * @param sessionId The session ID retrieved from the server via federation options request.
-     * @param credentialResponse The credential retrieved from Credential Manager.
-     */
-    suspend fun signInWithFederatedTokenResponse(
-        sessionId: String,
-        credentialResponse: GetCredentialResponse
-    ): AuthResult<Unit> {
-        return try {
-            val credential = credentialResponse.credential
-            if (credential is CustomCredential) {
-                val isSuccess = verifyIdToken(
-                    sessionId,
-                    GoogleIdTokenCredential
-                        .createFrom(credential.data).idToken,
+                        response.errorBody()?.let { parseResponseError(it) } ?: response.message(),
+                    ),
                 )
-                if (isSuccess) {
-                    AuthResult.Success(Unit)
-                } else {
-                    AuthResult.Failure(AuthError.InvalidCredentials)
-                }
-            } else {
-                Log.e(TAG, "Invalid federated token credential")
-                AuthResult.Failure(AuthError.Unknown("Invalid federated token credential"))
             }
         } catch (e: IOException) {
             AuthResult.Failure(AuthError.NetworkError)
@@ -436,35 +280,75 @@ class AuthRepository @Inject constructor(
     }
 
     /**
-     * Checks if the user is signed in.
+     * Finishes signing in with a restore key. This should only be called after a call to
+     * [signInRequest] and the retrieval of the restore key from Credential Manager.
      *
-     * @return True if the user is signed in, false otherwise.
+     * @param credentialResponse The response from Credential Manager containing the restore key.
+     * @return [AuthResult.Success] if the sign-in was successful.
      */
-    suspend fun isSignedInThroughPassword(): Boolean {
-        val sessionId = dataStore.read(SESSION_ID)
-        return when {
-            sessionId.isNullOrBlank() -> false
-            else -> true
+    suspend fun signInWithRestoreKeyResponse(credentialResponse: GetCredentialResponse): AuthResult<Unit> {
+        return try {
+            val credential = credentialResponse.credential as? RestoreCredential
+                ?: return AuthResult.Failure(AuthError.Unknown("Not a restore credential"))
+            val signInResponseJSON = JSONObject(credential.authenticationResponseJson)
+            val response = signInResponseJSON.getJSONObject("response")
+            val credentialId = signInResponseJSON.getString("rawId")
+            val sessionId = dataStore.read(SESSION_ID)
+            if (sessionId.isNullOrBlank()) {
+                return AuthResult.Failure(AuthError.Unknown(null))
+            }
+
+            val apiResult = authApiService.signInResponse(
+                cookie = sessionId.createCookieHeader(),
+                requestBody = SignInResponseRequest(
+                    id = credentialId,
+                    type = PUBLIC_KEY_CREDENTIAL_TYPE,
+                    rawId = credentialId,
+                    response = ResponseObject(
+                        clientDataJSON = response.getString("clientDataJSON"),
+                        authenticatorData = response.getString("authenticatorData"),
+                        signature = response.getString("signature"),
+                        userHandle = response.getString("userHandle"),
+                    ),
+                ),
+            )
+            if (apiResult.isSuccessful) {
+                dataStore.edit { prefs ->
+                    // The restore key used for this sign-in is the one to delete on sign-out.
+                    prefs[RESTORE_KEY_CREDENTIAL_ID] = credentialId
+                    apiResult.getSessionId()?.also {
+                        prefs[SESSION_ID] = it
+                    }
+                    prefs[USERNAME] = apiResult.body()?.username.orEmpty()
+                    prefs[DISPLAYNAME] = apiResult.body()?.displayName.orEmpty()
+                }
+                AuthResult.Success(Unit)
+            } else {
+                if (apiResult.code() == 401) {
+                    signOut()
+                }
+                AuthResult.Failure(AuthError.ServerError(parseResponseError(apiResult.errorBody()!!)))
+            }
+        } catch (e: IOException) {
+            AuthResult.Failure(AuthError.NetworkError)
+        } catch (e: Exception) {
+            AuthResult.Failure(AuthError.Unknown(e.message))
         }
     }
 
     /**
-     * Checks if the user is signed in through passkeys.
+     * Checks if a session ID is stored, i.e. the user is (or was) signed in.
      *
-     * @return True if the user is signed in through passkeys, false otherwise.
+     * @return True if a session ID is stored, false otherwise.
      */
-    suspend fun isSignedInThroughPasskeys(): Boolean {
-        val isSignedInThroughPasskeys = dataStore.read(IS_SIGNED_IN_THROUGH_PASSKEYS)
-        isSignedInThroughPasskeys?.let {
-            return it
-        }
-        return false
+    suspend fun isSignedIn(): Boolean {
+        return !dataStore.read(SESSION_ID).isNullOrBlank()
     }
 
     /**
      * Checks if session id is valid with server. Currently makes a getKeys() request
      *
-     * @return True if the session id is valid, false otherwise.
+     * @return [AuthResult.Success] if the session id is valid.
      */
     suspend fun isSessionIdValid(): AuthResult<Unit> {
         return try {
@@ -489,20 +373,7 @@ class AuthRepository @Inject constructor(
     }
 
     /**
-     * Sets the sign-in state.
-     *
-     * @param flag True if the user is signed in through passkeys, false otherwise.
-     */
-    suspend fun setSignedInState(flag: Boolean) {
-        dataStore.edit { prefs ->
-            prefs[IS_SIGNED_IN_THROUGH_PASSKEYS] = flag
-        }
-    }
-
-    /**
      * Clears the stored session ID from the data store asynchronously.
-     *
-     * This is a suspend function that edits the data store to remove the session ID.
      */
     suspend fun clearSessionIdFromDataStore() {
         dataStore.edit { prefs ->
@@ -513,8 +384,6 @@ class AuthRepository @Inject constructor(
     /**
      * Retrieves the stored username asynchronously.
      *
-     * This is a suspend function that reads the username from the data store.
-     *
      * @return The stored username as a [String]. Returns an empty string if no username is found.
      */
     suspend fun getUsername(): String {
@@ -522,84 +391,16 @@ class AuthRepository @Inject constructor(
     }
 
     /**
-     * Retrieves the stored displayname asynchronously.
+     * Deletes the restore key from the server.
      *
-     * This is a suspend function that reads the displayname from the data store.
-     *
-     * @return The stored displayname as a [String]. Returns an empty string if no displayname is
-     * found.
+     * @return True if the deletion was successful, false otherwise.
      */
-    suspend fun getDisplayname(): String {
-        return dataStore.read(DISPLAYNAME).orEmpty()
-    }
-
-    /**
-     * Retrieves a list of Passkeys from the Backend
-     *
-     * @return [PasskeysList] Object holding a list of Passkey details
-     * */
-    suspend fun getListOfPasskeys(): PasskeysList? {
-        val sessionId = dataStore.read(SESSION_ID)
-        if (!sessionId.isNullOrBlank()) {
-            val apiResult = authApiService.getKeys(
-                cookie = sessionId.createCookieHeader(),
-            )
-            if (apiResult.isSuccessful) {
-                dataStore.edit { prefs ->
-                    prefs[USER_ID_KEY] = apiResult.body()?.userId ?: ""
-                }
-                return apiResult.body()
-            } else if (apiResult.code() == 401) {
-                signOut()
-                return null
-            }
-        }
-        signOut()
-        return null
-    }
-
-    /**
-     * Deletes a passkey from the Backend
-     * @param credentialId The ID of the credential to be deleted
-     * @return True if the deletion was successful, false otherwise
-     */
-    suspend fun deletePasskey(credentialId: String): AuthResult<Unit> {
-        val sessionId = dataStore.read(SESSION_ID)
-        // Construct endpoint for deleting passkeys.
-        return try {
-            if (!sessionId.isNullOrEmpty()) {
-                val response = authApiService.deletePasskey(
-                    cookie = sessionId.createCookieHeader(),
-                    credentialId = credentialId,
-                )
-                if (response.isSuccessful) {
-                    AuthResult.Success(Unit)
-                } else {
-                    if (response.code() == 401) {
-                        signOut()
-                    }
-                    AuthResult.Failure(
-                        AuthError.ServerError(
-                            response.errorBody()?.let { parseResponseError(it) }
-                                ?: response.message()))
-                }
-            } else {
-                AuthResult.Failure(AuthError.Unknown(null))
-            }
-        } catch (e: IOException) {
-            AuthResult.Failure(AuthError.NetworkError)
-        } catch (e: Exception) {
-            AuthResult.Failure(AuthError.Unknown(e.message))
-        }
-    }
-
     suspend fun deleteRestoreKeyFromServer(): Boolean {
         val sessionId = dataStore.read(SESSION_ID)
         val credentialId = dataStore.read(RESTORE_KEY_CREDENTIAL_ID)
-        // Construct endpoint for deleting passkeys.
         try {
             if (!sessionId.isNullOrEmpty() && !credentialId.isNullOrEmpty()) {
-                val response = authApiService.deletePasskey(
+                val response = authApiService.deleteCredential(
                     cookie = sessionId.createCookieHeader(),
                     credentialId = credentialId,
                 )
@@ -612,48 +413,6 @@ class AuthRepository @Inject constructor(
         } catch (e: Exception) {
             Log.e(TAG, "Cannot call deleteRestoreKey", e)
         }
-        return false
-    }
-
-    /**
-     * Send a request to the server with urls parameter that contains a list of IdPs in an array.
-     * e.g. url=["https://accounts.google.com"]. The response will contain a client ID to be used
-     * for subsequent server verification to complete login. Note this sequence may vary depending
-     * on your server implementation.
-     * @return The client ID stored as the session ID as a [String].
-     */
-    suspend fun getFederationOptions(): String? {
-        val apiResult = authApiService.getFederationOptions(FederationOptionsRequest())
-        if (apiResult.isSuccessful) {
-            return apiResult.getSessionId()
-        }
-
-        return null
-    }
-
-    /**
-     * Verifies the ID token with the server to complete sign in.
-     * @param sessionId The ID token retrieved from the server via federation options request. This
-     * is treated as a session ID for this server implementation.
-     * @param token The ID token to be authorized.
-     */
-    suspend fun verifyIdToken(sessionId: String, token: String): Boolean {
-        val apiResult = authApiService.verifyIdToken(
-            cookie = sessionId.createCookieHeader(),
-            requestParams = SignInWithGoogleRequest(token = token),
-        )
-
-        if (apiResult.isSuccessful) {
-            apiResult.getSessionId()?.let { newSessionId ->
-                dataStore.edit { prefs ->
-                    prefs[SESSION_ID] = newSessionId
-                    prefs[USERNAME] = apiResult.body()?.username.orEmpty()
-                    prefs[DISPLAYNAME] = apiResult.body()?.displayName.orEmpty()
-                }
-                return true
-            }
-        }
-
         return false
     }
 

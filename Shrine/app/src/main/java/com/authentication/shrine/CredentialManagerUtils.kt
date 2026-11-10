@@ -15,194 +15,31 @@
  */
 package com.authentication.shrine
 
-import android.annotation.SuppressLint
 import android.content.Context
-import android.util.Log
 import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.ClearCredentialStateRequest.Companion.TYPE_CLEAR_RESTORE_CREDENTIAL
-import androidx.credentials.CreateCredentialRequest
 import androidx.credentials.CreateCredentialResponse
-import androidx.credentials.CreatePasswordRequest
-import androidx.credentials.CreatePasswordResponse
-import androidx.credentials.CreatePublicKeyCredentialRequest
-import androidx.credentials.CreatePublicKeyCredentialResponse
 import androidx.credentials.CreateRestoreCredentialRequest
 import androidx.credentials.CreateRestoreCredentialResponse
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.GetCredentialResponse
-import androidx.credentials.GetPasswordOption
-import androidx.credentials.GetPublicKeyCredentialOption
 import androidx.credentials.GetRestoreCredentialOption
-import androidx.credentials.SignalAllAcceptedCredentialIdsRequest
-import androidx.credentials.SignalCurrentUserDetailsRequest
-import androidx.credentials.SignalUnknownCredentialRequest
-import androidx.credentials.exceptions.CreateCredentialException
-import androidx.credentials.exceptions.GetCredentialCancellationException
-import androidx.credentials.exceptions.publickeycredential.GetPublicKeyCredentialDomException
 import androidx.credentials.exceptions.restorecredential.E2eeUnavailableException
-import androidx.datastore.core.DataStore
-import androidx.datastore.preferences.core.Preferences
-import com.authentication.shrine.repository.AuthRepository.Companion.RP_ID_KEY
-import com.authentication.shrine.repository.AuthRepository.Companion.USER_ID_KEY
-import com.authentication.shrine.repository.AuthRepository.Companion.read
-import com.authentication.shrine.repository.SERVER_CLIENT_ID
-import com.google.android.libraries.identity.googleid.GetGoogleIdOption
-import org.json.JSONArray
 import org.json.JSONObject
 import javax.inject.Inject
 
 /**
  * A utility class that provides methods for interacting with the credential manager.
  *
+ * Only restore keys (Restore Credentials) are used in this app. Passwords are typed in by the
+ * user and are not saved to the password manager.
+ *
  * @param credentialManager Instance of [CredentialManager]
  */
 class CredentialManagerUtils @Inject constructor(
     private val credentialManager: CredentialManager,
-    private val dataStore: DataStore<Preferences>,
 ) {
-
-    private val TAG = "CredentialManagerUtils"
-
-    private object JSON_KEYS {
-        const val RP_ID = "rpId"
-        const val CREDENTIAL_ID = "credentialId"
-        const val USER_ID = "userId"
-        const val ALL_ACCEPTED_CREDENTIAL_IDS = "allAcceptedCredentialIds"
-        const val NAME = "name"
-        const val DISPLAY_NAME = "displayName"
-    }
-
-    /**
-     * Retrieves a passkey or password credential from the credential manager.
-     *
-     * @param publicKeyCredentialRequestOptions The public key credential request options.
-     * @param context The activity context from the Composable, to be used in Credential Manager APIs
-     * @return The [GenericCredentialManagerResponse] object containing the passkey or password, or
-     * null if an error occurred.
-     */
-    suspend fun getPasskeyOrPasswordCredential(
-        publicKeyCredentialRequestOptions: JSONObject,
-        context: Context,
-    ): GenericCredentialManagerResponse {
-        val passkeysEligibility = PasskeysEligibility.isPasskeySupported(context)
-        if (!passkeysEligibility.isEligible) {
-            return GenericCredentialManagerResponse.Error(errorMessage = passkeysEligibility.reason)
-        }
-
-        val result: GetCredentialResponse?
-        try {
-            val credentialRequest = GetCredentialRequest(
-                listOf(
-                    GetPublicKeyCredentialOption(
-                        publicKeyCredentialRequestOptions.toString(),
-                        null,
-                    ),
-                    GetPasswordOption(),
-                ),
-            )
-            result = credentialManager.getCredential(context, credentialRequest)
-        } catch (e: GetCredentialCancellationException) {
-            // When credential selector bottom-sheet is cancelled
-            return GenericCredentialManagerResponse.CancellationError
-        } catch (e: GetPublicKeyCredentialDomException) {
-            // When the user verification / biometric bottom sheet is cancelled
-            return GenericCredentialManagerResponse.CancellationError
-        } catch (e: Exception) {
-            return GenericCredentialManagerResponse.Error(errorMessage = e.message ?: "")
-        }
-        return GenericCredentialManagerResponse.GetCredentialSuccess(getCredentialResponse = result)
-    }
-
-    /**
-     * Retrieves a Sign in with Google credential from the credential manager.
-     *
-     * @param context The activity context from the Composable, to be used in Credential Manager
-     * APIs
-     * @return The [GenericCredentialManagerResponse] object containing the passkey or password, or
-     * null if an error occurred.
-     */
-    suspend fun getSignInWithGoogleCredential(context: Context): GenericCredentialManagerResponse {
-        val result: GetCredentialResponse?
-        try {
-            val credentialRequest = GetCredentialRequest(
-                listOf(
-                    GetGoogleIdOption.Builder()
-                        .setServerClientId(SERVER_CLIENT_ID)
-                        .setFilterByAuthorizedAccounts(false)
-                        .build(),
-                ),
-            )
-            result = credentialManager.getCredential(context, credentialRequest)
-        } catch (e: GetCredentialCancellationException) {
-            // When credential selector bottom-sheet is cancelled
-            return GenericCredentialManagerResponse.CancellationError
-        } catch (e: GetPublicKeyCredentialDomException) {
-            // When the user verification / biometric bottom sheet is cancelled
-            return GenericCredentialManagerResponse.CancellationError
-        } catch (e: Exception) {
-            return GenericCredentialManagerResponse.Error(errorMessage = e.message ?: "")
-        }
-        return GenericCredentialManagerResponse.GetCredentialSuccess(getCredentialResponse = result)
-    }
-
-    /**
-     * Creates a new password credential.
-     *
-     * @param username The username for the new credential.
-     * @param password The password for the new credential.
-     * @param context The activity context from the Composable, to be used in Credential Manager APIs
-     */
-    suspend fun createPassword(
-        username: String,
-        password: String,
-        context: Context,
-    ) {
-        val createPasswordRequest = CreatePasswordRequest(
-            username,
-            password,
-        )
-        try {
-            credentialManager.createCredential(context, createPasswordRequest) as CreatePasswordResponse
-        } catch (_: Exception) { }
-    }
-
-    /**
-     * Creates a new passkey credential.
-     *
-     * @param requestResult The result of the passkey creation request.
-     * @param context The activity context from the Composable, to be used in Credential Manager APIs
-     * @param isConditional Whether the passkey creation is conditional.
-     * @return The [CreatePublicKeyCredentialResponse] object containing the passkey, or null if an error occurred.
-     */
-    @SuppressLint("PublicKeyCredential")
-    suspend fun createPasskey(
-        requestResult: JSONObject,
-        context: Context,
-        isConditional: Boolean = false,
-    ): GenericCredentialManagerResponse {
-        val passkeysEligibility = PasskeysEligibility.isPasskeySupported(context)
-        if (!passkeysEligibility.isEligible) {
-            return GenericCredentialManagerResponse.Error(errorMessage = passkeysEligibility.reason)
-        }
-
-        val credentialRequest = CreatePublicKeyCredentialRequest(
-            requestJson = requestResult.toString(),
-            isConditional = isConditional
-        )
-        val credentialResponse: CreatePublicKeyCredentialResponse
-        try {
-            credentialResponse = credentialManager.createCredential(
-                context,
-                credentialRequest as CreateCredentialRequest,
-            ) as CreatePublicKeyCredentialResponse
-        } catch (e: CreateCredentialException) {
-            return GenericCredentialManagerResponse.Error(errorMessage = e.message ?: "")
-        } catch (e: Exception) {
-            return GenericCredentialManagerResponse.Error(errorMessage = e.message ?: "")
-        }
-        return GenericCredentialManagerResponse.CreatePasskeySuccess(createPasskeyResponse = credentialResponse)
-    }
 
     /**
      * Creates a restore key using the Credential Manager API.
@@ -210,12 +47,10 @@ class CredentialManagerUtils @Inject constructor(
      * @param requestResult A [JSONObject] containing the data required for creating the restore
      * credential. This data is used to create a [CreateRestoreCredentialRequest]
      *
-     * @param context The Android Context used for checking passkey eligibility and interacting
+     * @param context The Android Context used for checking eligibility and interacting
      * with the Credential Manager API.
      *
-     * @return A [CreateRestoreCredentialResponse] indicating the result of the operation
-     *
-     * @throws Exception If any error occurs during the credential creation process.
+     * @return A [GenericCredentialManagerResponse] indicating the result of the operation
      */
     suspend fun createRestoreKey(
         requestResult: JSONObject,
@@ -248,7 +83,7 @@ class CredentialManagerUtils @Inject constructor(
         } catch (e: Exception) {
             return GenericCredentialManagerResponse.Error(errorMessage = e.message ?: "")
         }
-        return GenericCredentialManagerResponse.CreatePasskeySuccess(createPasskeyResponse = credentialResponse)
+        return GenericCredentialManagerResponse.CreateCredentialSuccess(createCredentialResponse = credentialResponse)
     }
 
     /**
@@ -288,73 +123,6 @@ class CredentialManagerUtils @Inject constructor(
         val clearRequest = ClearCredentialStateRequest(requestType = TYPE_CLEAR_RESTORE_CREDENTIAL)
         credentialManager.clearCredentialState(clearRequest)
     }
-
-    @SuppressLint("RestrictedApi")
-    suspend fun signalUnknown(
-        credentialId: String,
-    ) {
-        dataStore.read(RP_ID_KEY)?.let { rpId ->
-            credentialManager.signalCredentialState(
-                request = SignalUnknownCredentialRequest(
-                    requestJson = JSONObject().apply {
-                        put(JSON_KEYS.RP_ID, rpId)
-                        put(JSON_KEYS.CREDENTIAL_ID, credentialId)
-                    }.toString()
-                ),
-            )
-        } ?: Log.e(TAG, "RP ID not present")
-    }
-
-    @SuppressLint("RestrictedApi")
-    suspend fun signalAcceptedIds(
-        credentialIds: List<String>,
-    ) {
-        fetchDataAndPerformAction { rpId, userId ->
-            credentialManager.signalCredentialState(
-                request = SignalAllAcceptedCredentialIdsRequest(
-                    requestJson = JSONObject().apply {
-                        put(JSON_KEYS.RP_ID, rpId)
-                        put(JSON_KEYS.USER_ID, userId)
-                        put(JSON_KEYS.ALL_ACCEPTED_CREDENTIAL_IDS, JSONArray(credentialIds))
-                    }.toString()
-                ),
-            )
-        }
-    }
-
-    @SuppressLint("RestrictedApi")
-    suspend fun signalUserDetails(
-        newName: String,
-        newDisplayName: String,
-    ) {
-        fetchDataAndPerformAction { rpId, userId ->
-            credentialManager.signalCredentialState(
-                request = SignalCurrentUserDetailsRequest(
-                    requestJson = JSONObject().apply {
-                        put(JSON_KEYS.RP_ID, rpId)
-                        put(JSON_KEYS.USER_ID, userId)
-                        put(JSON_KEYS.NAME, newName)
-                        put(JSON_KEYS.DISPLAY_NAME, newDisplayName)
-                    }.toString()
-                ),
-            )
-        }
-    }
-
-    suspend fun fetchDataAndPerformAction(
-        credentialManagerAction: suspend (rpId: String, userId: String) -> Unit
-    ) {
-        val rpId = dataStore.read(RP_ID_KEY)
-        val userId = dataStore.read(USER_ID_KEY)
-
-        if (rpId.isNullOrBlank()) {
-            Log.e(TAG, "RP ID not present")
-        } else if (userId.isNullOrBlank()) {
-            Log.e(TAG, "User ID not present")
-        } else {
-            credentialManagerAction(rpId, userId)
-        }
-    }
 }
 
 sealed class GenericCredentialManagerResponse {
@@ -362,13 +130,11 @@ sealed class GenericCredentialManagerResponse {
         val getCredentialResponse: GetCredentialResponse,
     ) : GenericCredentialManagerResponse()
 
-    data class CreatePasskeySuccess(
-        val createPasskeyResponse: CreateCredentialResponse,
+    data class CreateCredentialSuccess(
+        val createCredentialResponse: CreateCredentialResponse,
     ) : GenericCredentialManagerResponse()
 
     data class Error(
         val errorMessage: String,
     ) : GenericCredentialManagerResponse()
-
-    data object CancellationError : GenericCredentialManagerResponse()
 }

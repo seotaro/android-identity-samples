@@ -21,21 +21,35 @@ import androidx.lifecycle.viewModelScope
 import com.authentication.shrine.repository.AuthRepository
 import com.authentication.shrine.repository.AuthRepository.Companion.TAG
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
  * A ViewModel that handles home screen-related operations.
  *
- * This ViewModel is responsible for signing out the user.
+ * This ViewModel is responsible for showing the signed-in user and signing out the user.
  */
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val repository: AuthRepository,
 ) : ViewModel() {
 
+    private val _uiState = MutableStateFlow(HomeUiState())
+    val uiState = _uiState.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            val username = repository.getUsername()
+            _uiState.update { it.copy(username = username) }
+        }
+    }
+
     /**
-     * Signs out the user.
+     * Signs out the user. The restore key is deleted from the device and the server, so that the
+     * user is not signed in automatically afterwards.
      *
      * @param deleteRestoreKey Lambda function received from Composable that triggers
      * Credential Manager's deleteRestoreKey
@@ -56,3 +70,12 @@ class HomeViewModel @Inject constructor(
         }
     }
 }
+
+/**
+ * UI state for the home screen.
+ *
+ * @param username The username of the signed-in user.
+ */
+data class HomeUiState(
+    val username: String = "",
+)

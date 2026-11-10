@@ -109,11 +109,9 @@ object AppModule {
     @Provides
     fun providesCredentialManagerUtils(
         credentialManager: CredentialManager,
-        dataStore: DataStore<Preferences>,
     ): CredentialManagerUtils {
         return CredentialManagerUtils(
             credentialManager = credentialManager,
-            dataStore = dataStore,
         )
     }
 

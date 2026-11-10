@@ -98,21 +98,12 @@ android {
 dependencies {
     // Credential Manager
     implementation(libs.credentials)
-    implementation(libs.google.id)
+    // GoogleApiAvailability, used to check whether restore keys are supported on the device.
     implementation(libs.play.services.auth)
 
     // optional - needed for credentials support from play services, for devices running
     // Android 13 and below.
     implementation(libs.credentials.play.services.auth)
-
-    // FIDO
-    implementation(libs.play.services.fido)
-
-    //Firebase Specific
-    implementation(platform(libs.firebase.bom))
-    implementation(libs.firebase.auth)
-    implementation(libs.firebase.database)
-    implementation(libs.firebase.functions)
 
     // ViewModel
     implementation(libs.lifecycle.viewmodel.compose)
@@ -132,9 +123,6 @@ dependencies {
     implementation(libs.compose.material)
     implementation(libs.compose.material.iconsExtended)
 
-    implementation(libs.coil.kt.compose)
-    implementation(libs.coil.svg)
-
     // Navigation
     implementation(libs.navigation.compose)
     implementation(libs.system.ui.controller)
@@ -150,7 +138,6 @@ dependencies {
     implementation(libs.core.ktx)
     implementation(libs.lifecycle.runtime.ktx)
     implementation(platform(libs.compose.bom))
-    implementation(libs.browser)
 
     // Retrofit
     implementation(libs.retrofit)
@@ -178,6 +165,5 @@ dependencies {
     implementation(libs.datastore.pref)
     implementation(libs.hilt.navigation.compose)
     implementation(libs.lifecycle.runtime.compose)
-    implementation(libs.gms.location)
     implementation(libs.androidx.core.splashscreen)
 }

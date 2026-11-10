@@ -51,7 +51,6 @@ fun ShrineNavigation(
         startDestination = startDestination,
         navigateToLogin = navigationActions.navigateToLogin,
         navigateToHome = navigationActions.navigateToHome,
-        navigateToMainMenu = navigationActions.navigateToMainMenu,
         navigateToRegister = navigationActions.navigateToRegister,
         credentialManagerUtils = credentialManagerUtils,
     )

@@ -15,17 +15,14 @@
  */
 package com.authentication.shrine.api
 
-import com.authentication.shrine.model.FederationOptionsRequest
 import com.authentication.shrine.model.GenericAuthResponse
 import com.authentication.shrine.model.LoginUsernamePasswordRequest
-import com.authentication.shrine.model.PasskeysList
 import com.authentication.shrine.model.RegisterRequestRequestBody
 import com.authentication.shrine.model.RegisterRequestResponse
 import com.authentication.shrine.model.RegisterResponseRequestBody
-import com.authentication.shrine.model.RegisterUsernameRequest
 import com.authentication.shrine.model.SignInRequestResponse
 import com.authentication.shrine.model.SignInResponseRequest
-import com.authentication.shrine.model.SignInWithGoogleRequest
+import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.Header
@@ -35,11 +32,14 @@ import retrofit2.http.Query
 /**
  * Interface defining the API endpoints for authentication and WebAuthn operations.
  * This interface is intended to be used with Retrofit for making network requests.
+ *
+ * Restore keys are registered and verified by the server through the same WebAuthn endpoints
+ * as passkeys.
  */
 interface AuthApiService {
 
     /**
-     * Logs in with the username and password
+     * Logs in with the username and password. The server creates the account if it doesn't exist.
      *
      * @param usernamePasswordRequest The request body containing the username and password.
      * @return A Retrofit {@link Response} wrapping a {@link GenericAuthResponse},
@@ -50,6 +50,13 @@ interface AuthApiService {
         @Body usernamePasswordRequest: LoginUsernamePasswordRequest,
     ): Response<GenericAuthResponse>
 
+    /**
+     * Requests the options (a challenge) to register a new restore key.
+     *
+     * @param cookie The session cookie for authentication.
+     * @param requestBody The request body containing the authenticator selection.
+     * @return A Retrofit {@link Response} wrapping a {@link RegisterRequestResponse}.
+     */
     @POST("webauthn/registerRequest")
     suspend fun registerRequest(
         @Header("Cookie") cookie: String,
@@ -58,15 +65,14 @@ interface AuthApiService {
 
     /**
      * Sends the client's response to a WebAuthn registration challenge back to the server
-     * to complete the passkey registration.
+     * to complete the restore key registration.
      *
      * @param cookie The session cookie for authentication.
-     * @param type The type of credential. Only used to specify Restore Credential passkeys to the
-     * server.
+     * @param type The type of credential. `rc` marks the credential as a restore key.
      * @param requestBody The request body containing the client's attestation response
      *                    to the registration challenge.
      * @return A Retrofit {@link Response} wrapping a {@link GenericAuthResponse},
-     *         indicating the success or failure of the passkey registration.
+     *         indicating the success or failure of the registration.
      */
     @POST("webauthn/registerResponse")
     suspend fun registerResponse(
@@ -102,57 +108,22 @@ interface AuthApiService {
     ): Response<GenericAuthResponse>
 
     /**
-     * Retrieves a list of registered passkeys (WebAuthn credentials) for the
-     * authenticated user.
+     * Retrieves the credentials registered for the authenticated user. Only used to check
+     * whether the session is still valid.
      *
      * @param cookie The session cookie for authentication.
-     * @return A Retrofit {@link Response} wrapping a {@link PasskeysList},
-     *         containing the list of the user's passkeys.
      */
     @POST("webauthn/getKeys")
     suspend fun getKeys(
         @Header("Cookie") cookie: String,
-    ): Response<PasskeysList>
+    ): Response<ResponseBody>
 
     /**
-     * Registers a username with the authentication server.
-     *
-     * @param username The request body containing the username and display name.
-     * @return A [Response] indicating the success or failure of the operation.
-     */
-    @POST("auth/new-user")
-    suspend fun registerUsername(
-        @Body username: RegisterUsernameRequest,
-    ): Response<GenericAuthResponse>
-
-    /**
-     * Deletes a passkey from the authentication server.
+     * Deletes a credential (the restore key) from the authentication server.
      */
     @POST("webauthn/removeKey")
-    suspend fun deletePasskey(
+    suspend fun deleteCredential(
         @Header("Cookie") cookie: String,
         @Query("credId") credentialId: String,
-    ): Response<GenericAuthResponse>
-
-    /**
-     * Send a request to the server with urls parameter that contains a list of IdPs in an array.
-     * e.g. urls=["https://accounts.google.com"]. The response will contain a nonce and IdP details.
-     * @param urls a list of urls to send for federated requests.
-     */
-    @POST("federation/options")
-    suspend fun getFederationOptions(
-        @Body urls: FederationOptionsRequest,
-    ): Response<GenericAuthResponse>
-
-    /**
-     * Verifies a session ID token and Credential Manager credentials with the backend server.
-     * @param cookie The session cookie for authentication containing the session ID.
-     * @param requestParams The parameters to send to the server, including Credential Manager
-     * credentials.
-     */
-    @POST("federation/verifyIdToken")
-    suspend fun verifyIdToken(
-        @Header("Cookie") cookie: String,
-        @Body requestParams: SignInWithGoogleRequest,
     ): Response<GenericAuthResponse>
 }
