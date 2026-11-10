@@ -5,7 +5,7 @@ This is a reduced version of the Credential Manager API sample app, also known a
 in automatically, without any interaction, after the app is restored on a new device.
 
 Passkeys, Sign in with Google, passkey management and the other demo screens of the original
-sample have been removed from the Android app. The Wear OS module is unchanged.
+sample have been removed, as well as the Wear OS module.
 
 ## Features
 
@@ -98,10 +98,8 @@ requires an Activity, the corresponding Context is passed in through the Screen.
 `AuthRepository.createRestoreKey()` combines these with the server calls. You can read more about
 how Restore Credentials work at https://developer.android.com/identity/sign-in/restore-credentials.
 
-## Wear OS Module
-
-This sample also includes a Wear OS module that implements Credential Manager for a Wear OS app.
-See the wear/README.md file to learn about Wear OS behaviors and limitations.
+The sign-in and restore flows are shown as sequence diagrams in
+[docs/restore-credentials-sequence.md](docs/restore-credentials-sequence.md).
 
 ## **License**
 
