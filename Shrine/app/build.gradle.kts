@@ -48,8 +48,8 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
-        buildConfigField("String", "API_BASE_URL", "\"https://project-sesame-426206.appspot.com/\"")
-        buildConfigField("String", "API_BASE_DOMAIN", "\"project-sesame-426206.appspot.com\"")
+        buildConfigField("String", "API_BASE_URL", "\"https://seotaro-sesame.appspot.com/\"")
+        buildConfigField("String", "API_BASE_DOMAIN", "\"seotaro-sesame.appspot.com\"")
     }
 
     signingConfigs {

@@ -72,7 +72,7 @@
     <string name="other_ways_to_sign_up">Other ways to sign up</string>
     <string name="enter_valid_username">Enter valid username</string>
     <string name="asset_statements">[{
-        \"include\": \"https://project-sesame-426206.appspot.com/.well-known/assetlinks.json\"
+        \"include\": \"https://seotaro-sesame.appspot.com/.well-known/assetlinks.json\"
         }]
     </string>
     <string name="manage">Manage</string>

@@ -33,7 +33,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField(
             "String", "API_BASE_URL",
-            "\"https://project-sesame-426206.appspot.com\""
+            "\"https://seotaro-sesame.appspot.com\""
         )
         buildConfigField(
             "String", "GOOGLE_SIGN_IN_SERVER_CLIENT_ID",
